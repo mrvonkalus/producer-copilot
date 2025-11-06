@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { APP_TITLE, getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Streamdown } from "streamdown";
-import { MessageCircle, Send, Plus, Trash2, Loader2 } from "lucide-react";
+import { MessageCircle, Send, Plus, Trash2, Loader2, Upload, Music } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 
@@ -14,7 +14,9 @@ export default function Home() {
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
   const [messageInput, setMessageInput] = useState("");
+  const [uploadingAudio, setUploadingAudio] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
 
@@ -51,6 +53,31 @@ export default function Home() {
     },
     onError: () => {
       toast.error("Failed to send message");
+    },
+  });
+
+  // Upload audio mutation
+  const uploadAudio = trpc.chat.uploadAudio.useMutation({
+    onSuccess: () => {
+      toast.success("Audio uploaded successfully");
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to upload audio");
+      setUploadingAudio(false);
+    },
+  });
+
+  // Analyze audio mutation
+  const analyzeAudio = trpc.chat.analyzeAudio.useMutation({
+    onSuccess: () => {
+      utils.chat.getConversation.invalidate({ conversationId: selectedConversationId! });
+      utils.chat.listConversations.invalidate();
+      setUploadingAudio(false);
+      toast.success("Audio analyzed!");
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to analyze audio");
+      setUploadingAudio(false);
     },
   });
 
@@ -92,6 +119,58 @@ export default function Home() {
   const handleDeleteConversation = (id: number) => {
     if (confirm("Are you sure you want to delete this conversation?")) {
       deleteConversation.mutate({ conversationId: id });
+    }
+  };
+
+  const handleAudioUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedConversationId) return;
+
+    // Validate file size (50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error("File size must be less than 50MB");
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('audio/')) {
+      toast.error("Please upload an audio file");
+      return;
+    }
+
+    setUploadingAudio(true);
+
+    try {
+      // Read file as base64
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64Data = e.target?.result as string;
+        const base64Content = base64Data.split(',')[1]; // Remove data:audio/...;base64, prefix
+
+        // Upload to S3
+        const uploadResult = await uploadAudio.mutateAsync({
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+          fileData: base64Content,
+          conversationId: selectedConversationId,
+        });
+
+        // Analyze with AI
+        await analyzeAudio.mutateAsync({
+          audioUrl: uploadResult.url,
+          conversationId: selectedConversationId,
+        });
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadingAudio(false);
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -236,27 +315,51 @@ export default function Home() {
 
             {/* Input Area */}
             <div className="border-t border-border p-4 bg-card">
-              <div className="max-w-4xl mx-auto flex gap-2">
-                <Input
-                  value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                  placeholder="Ask about production techniques, mixing, music theory..."
-                  className="flex-1 bg-input text-foreground"
-                  disabled={sendMessage.isPending}
-                />
-                <Button
-                  onClick={handleSendMessage}
-                  disabled={!messageInput.trim() || sendMessage.isPending}
-                  size="icon"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
+              <div className="max-w-4xl mx-auto">
+                {uploadingAudio && (
+                  <div className="mb-3 p-3 bg-primary/10 rounded-lg flex items-center gap-2 text-sm">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Uploading and analyzing audio...</span>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="audio/*"
+                    onChange={handleAudioUpload}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingAudio || !selectedConversationId}
+                    title="Upload audio file for analysis"
+                  >
+                    <Music className="h-4 w-4" />
+                  </Button>
+                  <Input
+                    value={messageInput}
+                    onChange={(e) => setMessageInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    placeholder="Ask about production techniques, mixing, music theory... or upload audio for analysis"
+                    className="flex-1 bg-input text-foreground"
+                    disabled={sendMessage.isPending || uploadingAudio}
+                  />
+                  <Button
+                    onClick={handleSendMessage}
+                    disabled={!messageInput.trim() || sendMessage.isPending || uploadingAudio}
+                    size="icon"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </>

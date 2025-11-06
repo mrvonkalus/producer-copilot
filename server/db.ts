@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, conversations, messages, InsertConversation, InsertMessage } from "../drizzle/schema";
+import { InsertUser, users, conversations, messages, InsertConversation, InsertMessage, audioFiles, InsertAudioFile } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -149,4 +149,28 @@ export async function getConversationMessages(conversationId: number) {
   if (!db) return [];
   
   return db.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(messages.createdAt);
+}
+
+// Audio file helpers
+export async function createAudioFile(data: InsertAudioFile) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(audioFiles).values(data);
+  return result[0].insertId;
+}
+
+export async function getAudioFile(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const result = await db.select().from(audioFiles).where(eq(audioFiles.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserAudioFiles(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db.select().from(audioFiles).where(eq(audioFiles.userId, userId)).orderBy(desc(audioFiles.createdAt));
 }

@@ -52,3 +52,22 @@ export const messages = mysqlTable("messages", {
 
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = typeof messages.$inferInsert;
+
+/**
+ * Audio files table - stores uploaded audio files for analysis
+ */
+export const audioFiles = mysqlTable("audioFiles", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  conversationId: int("conversationId"),
+  messageId: int("messageId"),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  fileSize: int("fileSize").notNull(),
+  mimeType: varchar("mimeType", { length: 100 }).notNull(),
+  s3Key: varchar("s3Key", { length: 500 }).notNull(),
+  s3Url: varchar("s3Url", { length: 1000 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AudioFile = typeof audioFiles.$inferSelect;
+export type InsertAudioFile = typeof audioFiles.$inferInsert;
