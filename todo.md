@@ -49,3 +49,7 @@
 - [x] AI audio analysis integration
 - [x] Display audio analysis results in chat
 - [x] File attachment support in message context
+
+## Bug Fixes
+
+- [x] Fix server error returning HTML instead of JSON on audio upload
