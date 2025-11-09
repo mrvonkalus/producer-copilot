@@ -9,6 +9,7 @@ import { Streamdown } from "streamdown";
 import { MessageCircle, Send, Plus, Trash2, Loader2, Upload, Music } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
+import { UpgradeModal } from "@/components/UpgradeModal";
 
 export default function Home() {
   const { user, loading: authLoading, isAuthenticated } = useAuth();
@@ -17,11 +18,18 @@ export default function Home() {
   const [uploadingAudio, setUploadingAudio] = useState(false);
   const [referenceTrackUrl, setReferenceTrackUrl] = useState<string | null>(null);
   const [referenceFileName, setReferenceFileName] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
+
+  // Fetch usage data
+  const { data: usageData } = trpc.usage.getMyUsage.useQuery(
+    undefined,
+    { enabled: isAuthenticated }
+  );
 
   // Fetch conversations
   const { data: conversations = [], isLoading: conversationsLoading } = trpc.chat.listConversations.useQuery(
@@ -75,11 +83,17 @@ export default function Home() {
     onSuccess: () => {
       utils.chat.getConversation.invalidate({ conversationId: selectedConversationId! });
       utils.chat.listConversations.invalidate();
+      utils.usage.getMyUsage.invalidate();
       setUploadingAudio(false);
       toast.success("Audio analyzed!");
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to analyze audio");
+      if (error.data?.code === 'FORBIDDEN') {
+        // User hit their limit
+        setShowUpgradeModal(true);
+      } else {
+        toast.error(error.message || "Failed to analyze audio");
+      }
       setUploadingAudio(false);
     },
   });
@@ -461,6 +475,14 @@ export default function Home() {
           </>
         )}
       </div>
+
+      {/* Upgrade Modal */}
+      <UpgradeModal
+        open={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        currentTier={(user?.subscriptionTier as 'free' | 'pro' | 'pro_plus') || 'free'}
+        usageCount={usageData?.audioAnalysis || 0}
+      />
     </div>
   );
 }

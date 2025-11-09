@@ -2,11 +2,11 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router, protectedProcedure } from "./_core/trpc";
-import { hasReachedLimit, getUpgradeMessage } from "../shared/pricing-config";
+import { hasReachedLimit, getUpgradeMessage, PRICING_TIERS, getSimplifiedTierLimits } from "../shared/pricing-config";
 import { z } from "zod";
-import { 
-  createConversation, 
-  getUserConversations, 
+import {
+  createConversation,
+  getUserConversations,
   getConversation,
   deleteConversation,
   createMessage,
@@ -21,6 +21,11 @@ import {
 import { storagePut } from "./storage";
 import { invokeLLM } from "./_core/llm";
 import { TRPCError } from "@trpc/server";
+import Stripe from 'stripe';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2025-10-29.clover' as any
+});
 
 export const appRouter = router({
   system: systemRouter,
@@ -325,6 +330,74 @@ Be specific with technical advice (EQ frequencies, compression ratios, etc.) and
           success: true,
         };
       }),
+  }),
+
+  billing: router({
+    createCheckoutSession: protectedProcedure
+      .input(z.object({
+        tier: z.enum(['pro', 'pro_plus']),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const user = await getUserByOpenId(ctx.user.openId);
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+        const priceId = input.tier === 'pro'
+          ? process.env.STRIPE_PRO_PRICE_ID
+          : process.env.STRIPE_PRO_PLUS_PRICE_ID;
+
+        const session = await stripe.checkout.sessions.create({
+          customer_email: user.email || undefined,
+          line_items: [{ price: priceId, quantity: 1 }],
+          mode: 'subscription',
+          success_url: `${process.env.APP_URL}/?upgrade=success`,
+          cancel_url: `${process.env.APP_URL}/?upgrade=canceled`,
+          metadata: {
+            userId: user.id.toString(),
+            tier: input.tier,
+          },
+        });
+
+        return { sessionUrl: session.url };
+      }),
+
+    createPortalSession: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const user = await getUserByOpenId(ctx.user.openId);
+        if (!user || !user.stripeCustomerId) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'No subscription found'
+          });
+        }
+
+        const session = await stripe.billingPortal.sessions.create({
+          customer: user.stripeCustomerId,
+          return_url: `${process.env.APP_URL}/`,
+        });
+
+        return { url: session.url };
+      }),
+  }),
+
+  usage: router({
+    getMyUsage: protectedProcedure.query(async ({ ctx }) => {
+      const user = await getUserByOpenId(ctx.user.openId);
+      if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+
+      const tier = user.subscriptionTier || 'free';
+      const isLifetime = tier === 'free';
+      const audioAnalysis = await getUserUsageCount(
+        user.id,
+        'audioAnalysis',
+        isLifetime
+      );
+
+      return {
+        tier,
+        audioAnalysis,
+        limits: getSimplifiedTierLimits(tier),
+      };
+    }),
   }),
 });
 

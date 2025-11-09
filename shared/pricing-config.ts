@@ -26,7 +26,7 @@ export interface TierConfig {
 
 /**
  * PRICING CONFIGURATION
- * 
+ *
  * Edit these values to change your pricing model.
  * Everything else will automatically update.
  */
@@ -50,7 +50,7 @@ export const PRICING_CONFIG: Record<SubscriptionTier, TierConfig> = {
       '1 project',
     ],
   },
-  
+
   pro: {
     name: 'pro',
     displayName: 'Pro',
@@ -74,7 +74,7 @@ export const PRICING_CONFIG: Record<SubscriptionTier, TierConfig> = {
       'Priority support',
     ],
   },
-  
+
   pro_plus: {
     name: 'pro_plus',
     displayName: 'Pro Plus',
@@ -102,10 +102,36 @@ export const PRICING_CONFIG: Record<SubscriptionTier, TierConfig> = {
 };
 
 /**
+ * Alias for backward compatibility with the guide
+ */
+export const PRICING_TIERS = PRICING_CONFIG;
+
+/**
  * Helper function to get tier config
  */
 export function getTierConfig(tier: SubscriptionTier): TierConfig {
   return PRICING_CONFIG[tier];
+}
+
+/**
+ * Simplified limits interface for the guide's UpgradeModal
+ */
+export interface SimplifiedLimits {
+  audioAnalyses: number;
+}
+
+/**
+ * Get simplified tier info for UpgradeModal
+ */
+export function getSimplifiedTierLimits(tier: SubscriptionTier): SimplifiedLimits {
+  const config = PRICING_CONFIG[tier];
+
+  // For free tier, use lifetime limit; for paid tiers, use monthly limit
+  const audioAnalyses = tier === 'free'
+    ? (config.limits.audioAnalysesLifetime || 1)
+    : (config.limits.audioAnalysesPerMonth as number);
+
+  return { audioAnalyses };
 }
 
 /**
@@ -118,12 +144,12 @@ export function hasReachedLimit(
   isLifetime: boolean = false
 ): boolean {
   const config = getTierConfig(tier);
-  
+
   // Special case: free tier lifetime limit
   if (tier === 'free' && usageType === 'audioAnalyses' && isLifetime) {
     return currentUsage >= (config.limits.audioAnalysesLifetime || 0);
   }
-  
+
   // Monthly limits
   let limit: number | 'unlimited' = 0;
   switch (usageType) {
@@ -137,7 +163,7 @@ export function hasReachedLimit(
       limit = config.limits.stemSeparationsPerMonth || 0;
       break;
   }
-  
+
   if (limit === 'unlimited') return false;
   return currentUsage >= limit;
 }
