@@ -66,6 +66,7 @@ export const audioFiles = mysqlTable("audioFiles", {
   mimeType: varchar("mimeType", { length: 100 }).notNull(),
   s3Key: varchar("s3Key", { length: 500 }).notNull(),
   s3Url: varchar("s3Url", { length: 1000 }).notNull(),
+  isReference: int("isReference").default(0).notNull(), // 0 = user track, 1 = reference track
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

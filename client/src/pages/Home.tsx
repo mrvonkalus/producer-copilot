@@ -15,8 +15,11 @@ export default function Home() {
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
   const [messageInput, setMessageInput] = useState("");
   const [uploadingAudio, setUploadingAudio] = useState(false);
+  const [referenceTrackUrl, setReferenceTrackUrl] = useState<string | null>(null);
+  const [referenceFileName, setReferenceFileName] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const referenceInputRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
 
@@ -122,6 +125,55 @@ export default function Home() {
     }
   };
 
+  const handleReferenceUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedConversationId) return;
+
+    // Validate file size (50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error("File size must be less than 50MB");
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('audio/')) {
+      toast.error("Please upload an audio file");
+      return;
+    }
+
+    try {
+      // Read file as base64
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64Data = e.target?.result as string;
+        const base64Content = base64Data.split(',')[1];
+
+        // Upload reference track to S3
+        const uploadResult = await uploadAudio.mutateAsync({
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+          fileData: base64Content,
+          conversationId: selectedConversationId,
+          isReference: true,
+        });
+
+        setReferenceTrackUrl(uploadResult.url);
+        setReferenceFileName(file.name);
+        toast.success(`Reference track "${file.name}" uploaded`);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Reference upload error:', error);
+      toast.error("Failed to upload reference track");
+    }
+
+    // Reset file input
+    if (referenceInputRef.current) {
+      referenceInputRef.current.value = '';
+    }
+  };
+
   const handleAudioUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !selectedConversationId) return;
@@ -154,12 +206,14 @@ export default function Home() {
           mimeType: file.type,
           fileData: base64Content,
           conversationId: selectedConversationId,
+          isReference: false,
         });
 
-        // Analyze with AI
+        // Analyze with AI (include reference track if available)
         await analyzeAudio.mutateAsync({
           audioUrl: uploadResult.url,
           conversationId: selectedConversationId,
+          referenceUrl: referenceTrackUrl || undefined,
         });
       };
       reader.readAsDataURL(file);
@@ -172,6 +226,12 @@ export default function Home() {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const handleRemoveReference = () => {
+    setReferenceTrackUrl(null);
+    setReferenceFileName(null);
+    toast.success("Reference track removed");
   };
 
   if (authLoading) {
@@ -322,6 +382,22 @@ export default function Home() {
                     <span>Uploading and analyzing audio...</span>
                   </div>
                 )}
+                {referenceTrackUrl && (
+                  <div className="mb-3 p-3 bg-accent/20 rounded-lg flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Music className="h-4 w-4 text-accent-foreground" />
+                      <span className="text-accent-foreground">Reference: {referenceFileName}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRemoveReference}
+                      className="h-6 text-xs"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <input
                     ref={fileInputRef}
@@ -330,14 +406,34 @@ export default function Home() {
                     onChange={handleAudioUpload}
                     className="hidden"
                   />
+                  <input
+                    ref={referenceInputRef}
+                    type="file"
+                    accept="audio/*"
+                    onChange={handleReferenceUpload}
+                    className="hidden"
+                  />
                   <Button
                     variant="outline"
                     size="icon"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploadingAudio || !selectedConversationId}
-                    title="Upload audio file for analysis"
+                    title="Upload your track for analysis"
                   >
                     <Music className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => referenceInputRef.current?.click()}
+                    disabled={uploadingAudio || !selectedConversationId}
+                    title="Upload reference track for comparison"
+                    className="relative"
+                  >
+                    <Upload className="h-4 w-4" />
+                    {referenceTrackUrl && (
+                      <span className="absolute -top-1 -right-1 h-3 w-3 bg-accent rounded-full" />
+                    )}
                   </Button>
                   <Input
                     value={messageInput}

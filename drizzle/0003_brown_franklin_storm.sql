@@ -1,0 +1,1 @@
+ALTER TABLE `audioFiles` ADD `isReference` int DEFAULT 0 NOT NULL;

@@ -53,3 +53,12 @@
 ## Bug Fixes
 
 - [x] Fix server error returning HTML instead of JSON on audio upload
+
+## Reference Track Comparison Feature
+
+- [x] Add reference track upload to database schema
+- [x] Create backend endpoint for reference track upload
+- [x] Implement comparative AI analysis (user track vs reference track)
+- [x] Build UI for reference track upload (optional second file)
+- [x] Display comparative analysis in chat results
+- [ ] Test reference track feature with real tracks

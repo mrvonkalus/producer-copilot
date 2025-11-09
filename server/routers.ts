@@ -153,6 +153,7 @@ Provide clear, practical advice. When discussing technical settings, be specific
         mimeType: z.string(),
         fileData: z.string(), // base64 encoded
         conversationId: z.number().optional(),
+        isReference: z.boolean().optional(), // true if this is a reference track
       }))
       .mutation(async ({ ctx, input }) => {
         // Validate file size (max 50MB)
@@ -182,6 +183,7 @@ Provide clear, practical advice. When discussing technical settings, be specific
           mimeType: input.mimeType,
           s3Key,
           s3Url: url,
+          isReference: input.isReference ? 1 : 0,
         });
 
         return {
@@ -203,12 +205,15 @@ Provide clear, practical advice. When discussing technical settings, be specific
         audioUrl: z.string(),
         conversationId: z.number(),
         userPrompt: z.string().optional(),
+        referenceUrl: z.string().optional(), // Optional reference track for comparison
       }))
       .mutation(async ({ ctx, input }) => {
         // Get conversation history
         const history = await getConversationMessages(input.conversationId);
         
-        const analysisPrompt = input.userPrompt || "Analyze this audio track and provide detailed feedback on production quality, mix balance, frequency spectrum, dynamics, and any areas for improvement.";
+        const analysisPrompt = input.referenceUrl 
+          ? (input.userPrompt || "Compare my track to the reference track. Analyze the differences in production quality, mix balance, frequency spectrum, dynamics, and provide specific recommendations to make my track sound more like the reference.")
+          : (input.userPrompt || "Analyze this audio track and provide detailed feedback on production quality, mix balance, frequency spectrum, dynamics, and any areas for improvement.");
 
         // Build messages for LLM with audio file
         const llmMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string | Array<any> }> = [
@@ -231,7 +236,13 @@ Be specific with technical advice (EQ frequencies, compression ratios, etc.) and
           })),
           {
             role: 'user',
-            content: [
+            content: input.referenceUrl ? [
+              { type: 'text' as const, text: analysisPrompt },
+              { type: 'text' as const, text: "\n\nMy Track:" },
+              { type: 'file_url' as const, file_url: { url: input.audioUrl, mime_type: 'audio/mpeg' as const } },
+              { type: 'text' as const, text: "\n\nReference Track:" },
+              { type: 'file_url' as const, file_url: { url: input.referenceUrl, mime_type: 'audio/mpeg' as const } }
+            ] : [
               { type: 'text' as const, text: analysisPrompt },
               { type: 'file_url' as const, file_url: { url: input.audioUrl, mime_type: 'audio/mpeg' as const } }
             ]
@@ -252,7 +263,9 @@ Be specific with technical advice (EQ frequencies, compression ratios, etc.) and
         await createMessage({
           conversationId: input.conversationId,
           role: 'user',
-          content: `${analysisPrompt}\n[Audio file uploaded]`,
+          content: input.referenceUrl 
+            ? `${analysisPrompt}\n[Audio file uploaded]\n[Reference track uploaded]`
+            : `${analysisPrompt}\n[Audio file uploaded]`,
         });
 
         // Save AI analysis
