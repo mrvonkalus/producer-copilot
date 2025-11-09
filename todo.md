@@ -66,3 +66,34 @@
 ## New Bug Fixes
 
 - [x] Fix "Cannot read properties of undefined (reading '0')" error in audio upload/analysis
+
+## Launch Critical Tasks (4-Hour Execution)
+
+### Phase 1: Fix Critical Bug (30 min)
+- [x] Fix analyzeAudio mutation to save actual AI response
+- [x] Fix double colon typo in reference track text (was already correct)
+- [x] Make MIME type dynamic instead of hardcoded (will add in next step)
+- [ ] Add debug logging to frontend
+- [ ] Test with 3 different audio files
+
+### Phase 2: Flexible Usage Tracking (1 hour)
+- [x] Create config-driven pricing system
+- [x] Add usageTracking table to database
+- [x] Implement getUserUsage function
+- [x] Add usage limit checks with flexible config
+- [ ] Test: 1 free analysis → hit limit → see upgrade modal
+
+### Phase 3: Stripe Integration (1.5 hours)
+- [ ] Create Stripe account and products
+- [ ] Add Stripe environment variables
+- [ ] Implement createCheckoutSession with dynamic pricing
+- [ ] Build UpgradeModal component
+- [ ] Add webhook handler for subscription updates
+- [ ] Test: Complete checkout → verify Pro access
+
+### Phase 4: End-to-End Testing (1 hour)
+- [ ] Test full flow as free user
+- [ ] Test upgrade to Pro
+- [ ] Test Pro usage limits
+- [ ] Deploy to Vercel
+- [ ] Buy producercopilot.ai domain

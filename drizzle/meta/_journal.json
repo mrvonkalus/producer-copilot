@@ -29,6 +29,13 @@
       "when": 1762665499837,
       "tag": "0003_brown_franklin_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1762674785578,
+      "tag": "0004_misty_franklin_richards",
+      "breakpoints": true
     }
   ]
 }

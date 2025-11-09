@@ -1,7 +1,8 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { publicProcedure, router, protectedProcedure } from "./_core/trpc";
+import { hasReachedLimit, getUpgradeMessage } from "../shared/pricing-config";
 import { z } from "zod";
 import { 
   createConversation, 
@@ -12,7 +13,10 @@ import {
   getConversationMessages,
   updateConversationTimestamp,
   createAudioFile,
-  getUserAudioFiles
+  getUserAudioFiles,
+  getUserByOpenId,
+  getUserUsageCount,
+  trackUsage
 } from "./db";
 import { storagePut } from "./storage";
 import { invokeLLM } from "./_core/llm";
@@ -208,6 +212,32 @@ Provide clear, practical advice. When discussing technical settings, be specific
         referenceUrl: z.string().optional(), // Optional reference track for comparison
       }))
       .mutation(async ({ ctx, input }) => {
+        // Check usage limits based on user's subscription tier
+        const user = await getUserByOpenId(ctx.user.openId);
+        if (!user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User not found' });
+        
+        const tier = user.subscriptionTier || 'free';
+        
+        // For free tier, check lifetime usage
+        if (tier === 'free') {
+          const lifetimeUsage = await getUserUsageCount(ctx.user.id, 'audioAnalysis', true);
+          if (hasReachedLimit(tier, 'audioAnalyses', lifetimeUsage, true)) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: getUpgradeMessage(tier, 'audioAnalyses'),
+            });
+          }
+        } else {
+          // For paid tiers, check monthly usage
+          const monthlyUsage = await getUserUsageCount(ctx.user.id, 'audioAnalysis', false);
+          if (hasReachedLimit(tier, 'audioAnalyses', monthlyUsage, false)) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: getUpgradeMessage(tier, 'audioAnalyses'),
+            });
+          }
+        }
+        
         // Get conversation history
         const history = await getConversationMessages(input.conversationId);
         
@@ -259,13 +289,13 @@ Be specific with technical advice (EQ frequencies, compression ratios, etc.) and
           ? responseContent 
           : "I'm sorry, I couldn't analyze the audio file.";
 
-        // Save user message with audio reference
+        // Save user message with audio reference (include actual URLs for context)
         await createMessage({
           conversationId: input.conversationId,
           role: 'user',
           content: input.referenceUrl 
-            ? `${analysisPrompt}\n[Audio file uploaded]\n[Reference track uploaded]`
-            : `${analysisPrompt}\n[Audio file uploaded]`,
+            ? `${analysisPrompt}\n\n[Uploaded track: ${input.audioUrl}]\n[Reference track: ${input.referenceUrl}]`
+            : `${analysisPrompt}\n\n[Uploaded track: ${input.audioUrl}]`,
         });
 
         // Save AI analysis
@@ -277,6 +307,18 @@ Be specific with technical advice (EQ frequencies, compression ratios, etc.) and
 
         // Update conversation timestamp
         await updateConversationTimestamp(input.conversationId);
+        
+        // Track usage (after successful analysis)
+        const now = new Date();
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        await trackUsage({
+          userId: ctx.user.id,
+          usageType: 'audioAnalysis',
+          conversationId: input.conversationId,
+          resourceId: null,
+          cost: 85, // $0.85 in cents
+          month: tier === 'free' ? null : currentMonth, // Free tier doesn't use monthly tracking
+        });
 
         return {
           analysis: analysisResult,

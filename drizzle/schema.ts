@@ -17,6 +17,11 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  subscriptionTier: mysqlEnum("subscriptionTier", ["free", "pro", "pro_plus"]).default("free").notNull(),
+  stripeCustomerId: varchar("stripeCustomerId", { length: 255 }),
+  stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }),
+  subscriptionStatus: mysqlEnum("subscriptionStatus", ["active", "canceled", "past_due", "trialing"]),
+  subscriptionEndsAt: timestamp("subscriptionEndsAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -72,3 +77,21 @@ export const audioFiles = mysqlTable("audioFiles", {
 
 export type AudioFile = typeof audioFiles.$inferSelect;
 export type InsertAudioFile = typeof audioFiles.$inferInsert;
+
+/**
+ * Usage tracking table - tracks user consumption of resources
+ * Flexible design allows tracking different types of usage
+ */
+export const usageTracking = mysqlTable("usageTracking", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  usageType: mysqlEnum("usageType", ["audioAnalysis", "midiGeneration", "stemSeparation"]).notNull(),
+  conversationId: int("conversationId"),
+  resourceId: int("resourceId"), // audioFileId, midiFileId, etc.
+  cost: int("cost").notNull(), // Cost in cents (e.g., 85 = $0.85)
+  month: varchar("month", { length: 7 }), // Format: YYYY-MM for monthly tracking
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type UsageTracking = typeof usageTracking.$inferSelect;
+export type InsertUsageTracking = typeof usageTracking.$inferInsert;

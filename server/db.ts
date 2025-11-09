@@ -1,6 +1,6 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, conversations, messages, InsertConversation, InsertMessage, audioFiles, InsertAudioFile } from "../drizzle/schema";
+import { InsertUser, users, conversations, messages, InsertConversation, InsertMessage, audioFiles, InsertAudioFile, usageTracking, InsertUsageTracking } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -176,4 +176,110 @@ export async function getUserAudioFiles(userId: number) {
   if (!db) return [];
   
   return db.select().from(audioFiles).where(eq(audioFiles.userId, userId)).orderBy(desc(audioFiles.createdAt));
+}
+
+// Usage tracking helpers
+export async function trackUsage(data: InsertUsageTracking) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(usageTracking).values(data);
+  if (!result || !result[0]) throw new Error("Failed to track usage");
+  return result[0].insertId;
+}
+
+/**
+ * Get user's usage count for a specific type
+ * @param userId - User ID
+ * @param usageType - Type of usage to track
+ * @param isLifetime - If true, count all-time usage. If false, count current month only.
+ * @returns Usage count
+ */
+export async function getUserUsageCount(
+  userId: number,
+  usageType: 'audioAnalysis' | 'midiGeneration' | 'stemSeparation',
+  isLifetime: boolean = false
+): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  // Build where conditions
+  const conditions = [
+    eq(usageTracking.userId, userId),
+    eq(usageTracking.usageType, usageType)
+  ];
+
+  // If not lifetime, filter by current month
+  if (!isLifetime) {
+    conditions.push(eq(usageTracking.month, currentMonth));
+  }
+
+  const result = await db.select().from(usageTracking)
+    .where(and(...conditions));
+  
+  return result.length;
+}
+
+/**
+ * Get user's total cost for current month
+ * @param userId - User ID
+ * @returns Total cost in cents
+ */
+export async function getUserMonthlyCost(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const result = await db.select().from(usageTracking)
+    .where(and(
+      eq(usageTracking.userId, userId),
+      eq(usageTracking.month, currentMonth)
+    ));
+
+  return result.reduce((total: number, record: any) => total + record.cost, 0);
+}
+
+/**
+ * Get user's usage breakdown for current month
+ * @param userId - User ID
+ * @returns Object with usage counts by type
+ */
+export async function getUserUsageBreakdown(userId: number): Promise<{
+  audioAnalysis: number;
+  midiGeneration: number;
+  stemSeparation: number;
+  totalCost: number;
+}> {
+  const db = await getDb();
+  if (!db) return { audioAnalysis: 0, midiGeneration: 0, stemSeparation: 0, totalCost: 0 };
+
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const result = await db.select().from(usageTracking)
+    .where(and(
+      eq(usageTracking.userId, userId),
+      eq(usageTracking.month, currentMonth)
+    ));
+
+  const breakdown = {
+    audioAnalysis: 0,
+    midiGeneration: 0,
+    stemSeparation: 0,
+    totalCost: 0,
+  };
+
+  result.forEach((record: any) => {
+    if (record.usageType in breakdown) {
+      breakdown[record.usageType as keyof typeof breakdown]++;
+    }
+    breakdown.totalCost += record.cost;
+  });
+
+  return breakdown;
 }
