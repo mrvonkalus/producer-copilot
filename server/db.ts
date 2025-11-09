@@ -95,6 +95,7 @@ export async function createConversation(data: InsertConversation) {
   if (!db) throw new Error("Database not available");
   
   const result = await db.insert(conversations).values(data);
+  if (!result || !result[0]) throw new Error("Failed to create conversation");
   return result[0].insertId;
 }
 
@@ -141,6 +142,7 @@ export async function createMessage(data: InsertMessage) {
   if (!db) throw new Error("Database not available");
   
   const result = await db.insert(messages).values(data);
+  if (!result || !result[0]) throw new Error("Failed to create message");
   return result[0].insertId;
 }
 
@@ -157,6 +159,7 @@ export async function createAudioFile(data: InsertAudioFile) {
   if (!db) throw new Error("Database not available");
   
   const result = await db.insert(audioFiles).values(data);
+  if (!result || !result[0]) throw new Error("Failed to create audio file record");
   return result[0].insertId;
 }
 
