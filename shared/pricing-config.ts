@@ -55,7 +55,7 @@ export const PRICING_CONFIG: Record<SubscriptionTier, TierConfig> = {
     name: 'pro',
     displayName: 'Pro',
     price: 19,
-    stripePriceId: process.env.STRIPE_PRO_PRICE_ID || 'price_pro_monthly',
+    stripePriceId: null, // Server-side only
     limits: {
       audioAnalysesPerMonth: 10,
       midiGenerationsPerMonth: 50,
@@ -79,7 +79,7 @@ export const PRICING_CONFIG: Record<SubscriptionTier, TierConfig> = {
     name: 'pro_plus',
     displayName: 'Pro Plus',
     price: 39,
-    stripePriceId: process.env.STRIPE_PRO_PLUS_PRICE_ID || 'price_pro_plus_monthly',
+    stripePriceId: null, // Server-side only
     limits: {
       audioAnalysesPerMonth: 30,
       midiGenerationsPerMonth: 'unlimited',
